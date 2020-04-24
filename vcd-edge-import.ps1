@@ -1,10 +1,13 @@
 <#
 .SYNOPSIS
-  Import vCloud edge NAT rules and firewall from CSV files into given edge.
+  Import vCloud edge NAT rules, firewall rules, and static routes from 
+  CSV files into a given edge.
 .DESCRIPTION
-  This program creates CSV exports of a given vCloud edge NAT and firewall rules.
-  The CSV files are saved in the directory, where the program has been executed.
-  It only exports standard rules, no rules related to VPN tunnels.
+  This program imports vCloud edge NAT rules, firewall rules, and static routes
+  from a  previously exported edge configuration.
+  The CSV files must be saved in the directory, where the program is executed.
+  It only import user-defined rules, no rules created by any services (e.g. VPN
+  tunnels).
   Before executing the program, make sure that the rules in the CSV files fit to 
   the actual configuration of the edge where the rules should be imported 
   (e.g. IP addresses).
@@ -15,12 +18,14 @@
 .PARAMETER SourceEdge
   The name of the source edge, from which the configuration has been exported.
   It is used to look up the CSV files in the current directory.
- 
+.PARAMETER myCiServer
+  The name of the cloud server to connect to.
 .EXAMPLE
-  PS> .\vcd-edge-import.ps1 -Org foobar -SourceEdge foobar_gw_01 -TargetEdge foobar_gw_02  -myCiServer cloud.t-systems.at
+  PS> .\vcd-edge-import.ps1 -Org foobar -SourceEdge foobar_gw_01 -TargetEdge foobar_gw_02 -myCiServer cloud.t-systems.at
   Executes the program for edge foobar_gw_01 in vOrg foobar.
 .NOTES
   Author: Adrian Heißler <adrian.heissler@t-systems.at>
+  24.04.2020: Version 1.1 - Added import of static routes.
   11.12.2018: Version 1.0 - Initial revision.
 #>
 Param (
@@ -164,7 +169,7 @@ $CIServer = $global:DefaultCIServers.Name | Where-Object { $edgeGateway.href -ma
 $edgeGatewayID = $EdgeView.id.Split(':')[3]
 $invokeURI = "https://$CIServer/api/admin/edgeGateway/$edgeGatewayID/action/configureServices"
 try{ 
-	$null = Invoke-vCloud -URI $invokeURI -Body $GoXML -ContentType 'application/vnd.vmware.admin.edgeGatewayServiceConfiguration+xml' -Method POST | Out-Null
+	$null = Invoke-vCloud -URI $invokeURI -Body $GoXML -ContentType 'application/vnd.vmware.admin.edgeGatewayServiceConfiguration+xml' -Method POST -ApiVersion '30.0' | Out-Null
 }
 catch {
 	throw "Cannot congfigure edge nat service"
@@ -243,5 +248,35 @@ while ((Search-Cloud -QueryType EdgeGateway -Name $TargetEdge -Verbose:$False).I
 }
 Write-Progress -Activity "Configure firewall service" -Completed
 #endregion import firewall configuration
+
+#region import static routes
+Write-Host "Build static routes config from csv file" -Foregroundcolor cyan
+$EdgeView = $EdgeGateway[0] | Get-CIView
+
+$RoutingService = New-Object VMware.VimAutomation.Cloud.Views.StaticRoutingService
+$RoutingService.IsEnabled = $True
+$RoutingService.StaticRoute = @()
+$Row = 1
+
+Import-Csv -Path .\$($SourceEdge)-StaticRoutes.csv -ErrorAction Stop | Foreach-Object {
+	Write-Host $_
+	$RoutingService.StaticRoute += New-Object VMware.VimAutomation.Cloud.Views.StaticRoute
+	$Row = $_.ID - 1
+
+	$RoutingService.StaticRoute[$Row].Name = $_.Name
+	$RoutingService.StaticRoute[$Row].Network = $_.Network
+	$RoutingService.StaticRoute[$Row].NextHopIp = $_.NextHopIp
+	$RoutingService.StaticRoute[$Row].GatewayInterface = $_.GatewayInterfaceHref
+}
+$null = $EdgeView.ConfigureServices_Task($RoutingService)
+
+while ((Search-Cloud -QueryType EdgeGateway -Name $TargetEdge -Verbose:$False).IsBusy -eq $True) {
+	$i++
+	Start-Sleep 1
+	if ($i -gt 120) { Write-Error "Configure static routing service"; break }
+	Write-Progress -Activity "Configure static routing service" -Status "Wait for edge to become ready..."
+}
+Write-Progress -Activity "Configure static routing service" -Completed
+#endregion import static routes
 
 Disconnect-CIServer $myCiServer -Confirm:$false

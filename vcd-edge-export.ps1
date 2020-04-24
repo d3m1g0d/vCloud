@@ -1,20 +1,25 @@
 <#
 .SYNOPSIS
-  Export vCloud edge NAT rules and firewall rules to CSV files.
+  Export vCloud edge NAT rules, firewall rules, and static routes to CSV files.
 .DESCRIPTION
-  This program creates CSV exports of a given vCloud edge NAT and firewall rules.
+  This program creates CSV exports of a given vCloud edge NAT, firewall rules
+  and static routes.
   The CSV files are saved in the directory, where the program has been executed.
-  It only exports standard rules, no rules related to VPN tunnels.
+  It only exports user-defined rules, no rules created by any services (e.g. VPN
+  tunnels).
 .PARAMETER Org 
   The vOrg to log in.  User credentials must be provided during script execution.
 .PARAMETER Edge
   The name of the edge which configuration should be exported.
+.PARAMETER myCiServer
+  The name of the cloud server to connect to.
 .EXAMPLE
   PS> .\vcd-edge-export.ps1 -Org foobar -Edge foobar_gw_01 -myCiServer cloud.t-systems.at
   Executes the program for edge foobar_gw_01 in vOrg foobar.
 .NOTES
   Author: Adrian Heißler <adrian.heissler@t-systems.at>
-  07.09.2019: Version 1.0 - Fixed API version in get-edgeconfig with vCD 9.1.
+  24.04.2020: Version 1.2 - Added export of static routes.
+  07.09.2019: Version 1.1 - Fixed API version in get-edgeconfig with vCD 9.1.
   11.12.2018: Version 1.0 - Initial revision.
 #>
 Param (
@@ -95,6 +100,28 @@ function Get-EdgeFirewallRules ($EdgeConfXml) {
     $Rules
 }
 
+function Get-EdgeStaticRoutes ($EdgeConfXml) {
+	$StaticRoutes = $EdgeConfXml.EdgeGateway.Configuration.EdgegatewayServiceConfiguration.StaticRoutingService.StaticRoute
+	
+	$Routes = @()
+	$Row = 1
+    if ($StaticRoutes){
+		$StaticRoutes | ForEach-Object {
+	        $NewRoute = New-Object PSObject -Property @{
+				ID = $Row
+				Name = $_.Name
+				Network = $_.Network
+				NextHopIp = $_.NextHopIp
+				GatewayInterfaceName = $_.GatewayInterface.name
+				GatewayInterfaceHref = $_.GatewayInterface.href
+			}
+	        $Routes += $NewRoute
+			$Row++
+	    }
+	}
+    $Routes
+}
+
 #region connect-ciserver
 if (-not $global:DefaultCIServers) {
 	try{
@@ -136,6 +163,12 @@ $EdgeFirewallRules = Get-EdgeFirewallRules -EdgeConfXml $EdgeConfig
 $EdgeFirewallRules
 Write-Host "Export edge firewall rules to .\$($Edge)-FirewallRules.csv" -Foregroundcolor cyan
 $EdgeFirewallRules | Export-Csv -Path .\$($Edge)-FirewallRules.csv -NoType
+
+Write-Host "Get edge static routes" -Foregroundcolor cyan
+$EdgeStaticRoutes = Get-EdgeStaticRoutes -EdgeConfXml $EdgeConfig 
+$EdgeStaticRoutes
+Write-Host "Export edge static routes to .\$($Edge)-StaticRoutes.csv" -Foregroundcolor cyan
+$EdgeStaticRoutes | Export-Csv -Path .\$($Edge)-StaticRoutes.csv -NoType
 #endregion get configuration
 
 Disconnect-CIServer $myCiServer -Confirm:$false
