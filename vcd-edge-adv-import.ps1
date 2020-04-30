@@ -156,17 +156,27 @@ Import-Csv -Path .\$($SourceEdge)-FirewallRules.csv -ErrorAction Stop | Foreach-
 	
 	if ($_.Source) {
 		$sourceXML = '<source>'
-		$ipAddresses = $_.Source.Split(" ")
-		foreach ($ipAddr in $ipAddresses) {
-			$sourceXML += "<ipAddress>$ipAddr</ipAddress>"
+		if ($_.Source -match "external|internal|vnic") {
+			$sourceXML += '<vnicGroupId>' + $_.Source + '</vnicGroupId>'
+		}
+		else {
+			$ipAddresses = $_.Source.Split(" ")
+			foreach ($ipAddr in $ipAddresses) {
+				$sourceXML += "<ipAddress>$ipAddr</ipAddress>"
+			}
 		}
 		$sourceXML += '</source>'
 	}
 	if ($_.Destination) {
 		$destinationXML = '<destination>'
-		$ipAddresses = $_.Destination.Split(" ")
-		foreach ($ipAddr in $ipAddresses) {
-			$destinationXML += "<ipAddress>$ipAddr</ipAddress>"
+		if ($_.Destination -match "external|internal|vnic") {
+			$destinationXML += '<vnicGroupId>' + $_.Destination + '</vnicGroupId>'
+		}
+		else {
+			$ipAddresses = $_.Destination.Split(" ")
+			foreach ($ipAddr in $ipAddresses) {
+				$destinationXML += "<ipAddress>$ipAddr</ipAddress>"
+			}
 		}
 		$destinationXML += '</destination>'
 	}
@@ -217,8 +227,7 @@ Import-Csv -Path .\$($SourceEdge)-FirewallRules.csv -ErrorAction Stop | Foreach-
 $GoXML = '<firewallRules>'
 $GoXML += $FWRulesXML
 $GoXML += '</firewallRules>'
-$GoXML
-$GoXML > .\fw.xml
+#$GoXML
 Write-Host "Activate firewall service on edge" -Foregroundcolor cyan
 $CIServer = $global:DefaultCIServers.Name | Where-Object { $edgeGateway.href -match $_.ServiceUri }
 $invokeURI = "https://$CIServer/network/edges/$edgeGatewayID/firewall/config/rules"
