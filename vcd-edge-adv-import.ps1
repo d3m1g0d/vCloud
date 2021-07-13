@@ -25,6 +25,7 @@
   Executes the program for edge foobar_gw_01 in vOrg foobar.
 .NOTES
   Author: Adrian Heißler <adrian.heissler@t-systems.at>
+  13.07.2021: Version 1.1 - Corrected import for ICMP and ANY firewall rules.
   29.04.2020: Version 1.0 - Initial revision.
 #>
 Param (
@@ -182,28 +183,24 @@ Import-Csv -Path .\$($SourceEdge)-FirewallRules.csv -ErrorAction Stop | Foreach-
 	}
 
 	if ($_.Service) {
-		if ($_.Service -eq "Icmp") {
-			$serviceXML = "<service>
-              <protocol>Icmp</protocol>
-              <icmpType>any</icmpType>
-            </service>"
-		}
-		elseif ($_.Service -eq "Any") {
-			$serviceXML = "<service>
-              <protocol>Any</protocol>
-            </service>"
-		}
-		else {
-			$services = $_.Service.Split(" ")
-			$ServiceXML = ''
-			foreach ($service in $services) {
-				$s = $service.Split(":")		
+		$services = $_.Service.Split(" ")
+		$ServiceXML = ''
+		foreach ($service in $services) {
+			$s = $service.Split(":")		
 				$ServiceXML += '<service>'
-				$ServiceXML += '<protocol>' + $s[0] + '</protocol>'
-				$ServiceXML += '<port>' + $s[1] + '</port>'
-				$ServiceXML += '<sourcePort>' + $s[2] + '</sourcePort>'
+				if ($s[0] -eq "Icmp") {
+					$ServiceXML += '<protocol>Icmp</protocol>'
+					$ServiceXML += '<icmpType>any</icmpType>'
+				}
+				elseif ($s[0] -eq "Any") {
+					$ServiceXML += '<protocol>Any</protocol>'
+				}
+				else {
+					$ServiceXML += '<protocol>' + $s[0] + '</protocol>'
+					$ServiceXML += '<port>' + $s[1] + '</port>'
+					$ServiceXML += '<sourcePort>' + $s[2] + '</sourcePort>'
+				}
 				$ServiceXML += '</service>'
-			}
 		}
 	}
 	

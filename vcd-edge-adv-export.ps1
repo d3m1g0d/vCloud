@@ -18,6 +18,7 @@
   Executes the program for edge foobar_gw_01 in vOrg foobar.
 .NOTES
   Author: Adrian Heißler <adrian.heissler@t-systems.at>
+  13.07.2021: Version 1.1 - Corrected export for ICMP and ANY firewall rules.
   29.04.2020: Version 1.0 - Initial revision.
 #>
 Param (
@@ -94,7 +95,7 @@ function Get-EdgeFirewallRules ($EdgeConfXml) {
 				
 				$service = ''
 				foreach ($s in $_.application.service) {
-					if ($s.protocol -eq 'Icmp' -or $s.protocol -eq 'any') { $service = $s.protocol }
+					if ($s.protocol -eq 'Icmp' -or $s.protocol -eq 'any') { $service += $s.protocol + ' ' }
 					else { $service += $s.protocol + ':' + $s.port + ':' + $s.sourceport + ' ' }
 				}
 				if ($service.Chars($service.Length - 1) -eq ' ') { $service = ($service.TrimEnd(' ')) }
